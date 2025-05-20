@@ -26,8 +26,8 @@ def permutation_entropy(time_series, order=3, delay=1):
     max_entropy = np.log2(factorial(order))
     return entropy / max_entropy
 
-# RQA metrics approximation
-def compute_rqa(ts, eps=0.05):
+# RQA metrics approximation and matrix
+def compute_rqa(ts, eps=0.05, return_matrix=False):
     N = len(ts)
     matrix = np.zeros((N, N), dtype=bool)
     for i in range(N):
@@ -59,6 +59,8 @@ def compute_rqa(ts, eps=0.05):
         det = np.sum(lines) / np.sum(matrix)
         probs = np.array(lines) / np.sum(lines)
         entr = -np.sum(probs * np.log(probs))
+    if return_matrix:
+        return rr, det, entr, matrix
     return rr, det, entr
 
 uploaded_file = st.file_uploader("Choose a PDB file", type=["pdb"])
@@ -82,9 +84,6 @@ if uploaded_file is not None:
     if n_atoms < 30:
         st.warning("Structure has too few Cα atoms. At least 30 required.")
     else:
-        st.markdown(f"### ✅ Extracted {n_atoms} Cα atoms. Running analysis...")
-
-        # Sidebar settings for IDR and filters
         st.sidebar.markdown("### 🔍 IDR & Filter Settings")
         idr_start = st.sidebar.number_input("IDR Start Index", min_value=0, max_value=n_atoms-2, value=0)
         idr_end = st.sidebar.number_input("IDR End Index", min_value=idr_start+1, max_value=n_atoms-1, value=min(60, n_atoms-1))
@@ -95,7 +94,7 @@ if uploaded_file is not None:
         step = 10
         window = 10
         results = []
-        starts, lyaps, pes, rqa_rrs, rqa_dets, rqa_ents = [], [], [], [], [], []
+        segments = []
 
         for i in range(0, n_atoms - window, step):
             ts = [np.linalg.norm(ca_coords[i] - ca_coords[j]) for j in range(i + 1, i + window + 1)]
@@ -103,33 +102,14 @@ if uploaded_file is not None:
             diff_series = np.abs(np.diff(ts))
             diff_series = diff_series[diff_series > 0]
             lyap = np.mean(np.log(diff_series)) if len(diff_series) > 0 else 0
-            rr, det, entr = compute_rqa(ts)
+            rr, det, entr, mat = compute_rqa(ts, return_matrix=True)
             pe = permutation_entropy(ts)
             overlap = "Yes" if (idr_start <= i + window and idr_end >= i) else "No"
-            results.append({
-                "Start": i,
-                "End": i + window,
-                "Lyapunov": round(lyap, 4),
-                "RQA_RR": round(rr, 4),
-                "RQA_DET": round(det, 4),
-                "RQA_ENTR": round(entr, 4),
-                "PE": round(pe, 4),
-                "IDR_overlap": overlap
-            })
-            starts.append(i)
-            lyaps.append(lyap)
-            pes.append(pe)
-            rqa_rrs.append(rr)
-            rqa_dets.append(det)
-            rqa_ents.append(entr)
+            results.append({"Start": i, "End": i + window, "Lyapunov": round(lyap, 4), "RQA_RR": round(rr, 4), "RQA_DET": round(det, 4), "RQA_ENTR": round(entr, 4), "PE": round(pe, 4), "IDR_overlap": overlap})
+            segments.append({"index": f"{i}-{i + window}", "ts": ts, "rqa_mat": mat})
 
         df = pd.DataFrame(results)
-        filtered_df = df[
-            (df['Lyapunov'] >= min_lyap) &
-            (df['Lyapunov'] <= max_lyap) &
-            (df['PE'] >= min_pe) &
-            (df['PE'] <= max_pe)
-        ]
+        filtered_df = df[(df['Lyapunov'] >= min_lyap) & (df['Lyapunov'] <= max_lyap) & (df['PE'] >= min_pe) & (df['PE'] <= max_pe)]
         if show_idr_only:
             filtered_df = filtered_df[filtered_df['IDR_overlap'] == "Yes"]
 
@@ -140,50 +120,37 @@ if uploaded_file is not None:
         filtered_df.to_csv(csv_output, index=False)
         st.download_button("⬇️ Download Filtered CSV", data=csv_output.getvalue(), file_name="filtered_chaos_analysis.csv")
 
-        # Visualizations remain unchanged and reflect all segments
-        st.markdown("### 📈 Metric Visualizations (Full Dataset)")
+        # Interactive segment selection
+        st.markdown("### 🔍 Select a Segment to Explore")
+        selected_index = st.selectbox("Choose a segment (start-end):", [seg["index"] for seg in segments])
+        selected_seg = next(seg for seg in segments if seg["index"] == selected_index)
 
-        fig1, ax1 = plt.subplots()
-        ax1.plot(starts, lyaps, marker='o', label='Lyapunov', color='crimson')
-        ax1.set_xlabel("Start Index")
-        ax1.set_ylabel("Lyapunov Exponent")
-        ax1.set_title("Lyapunov vs. Segment Start Index")
-        ax1.grid(True)
-        ax1.legend()
-        st.pyplot(fig1)
+        # Plot time series of selected segment
+        fig_ts, ax_ts = plt.subplots()
+        ax_ts.plot(selected_seg["ts"], marker='o', linestyle='-', color='teal')
+        ax_ts.set_title(f"Time Series for Segment {selected_index}")
+        ax_ts.set_xlabel("Frame Index")
+        ax_ts.set_ylabel("Distance (Å)")
+        st.pyplot(fig_ts)
 
-        fig2, ax2 = plt.subplots()
-        ax2.plot(starts, pes, marker='s', label='Permutation Entropy', color='navy')
-        ax2.set_xlabel("Start Index")
-        ax2.set_ylabel("PE")
-        ax2.set_title("Permutation Entropy vs. Segment Start Index")
-        ax2.grid(True)
-        ax2.legend()
-        st.pyplot(fig2)
+        # Plot RQA matrix
+        fig_rqa, ax_rqa = plt.subplots()
+        ax_rqa.imshow(selected_seg["rqa_mat"], cmap='Greys', origin='lower')
+        ax_rqa.set_title(f"RQA Matrix for Segment {selected_index}")
+        st.pyplot(fig_rqa)
 
-        fig3, ax3 = plt.subplots()
-        ax3.plot(starts, rqa_rrs, marker='^', label='Recurrence Rate', color='darkgreen')
-        ax3.set_xlabel("Start Index")
-        ax3.set_ylabel("RQA RR")
-        ax3.set_title("Recurrence Rate vs. Segment Start Index")
-        ax3.grid(True)
-        ax3.legend()
-        st.pyplot(fig3)
+        # Auto interpretation block
+        st.markdown("### 📖 Interpretation")
+        peak_lyap = df['Lyapunov'].max()
+        peak_pe = df['PE'].max()
+        if peak_lyap > 1.5:
+            st.write("🔺 **High Lyapunov values** suggest segments with strong chaotic dynamics.")
+        else:
+            st.write("🟢 **Moderate Lyapunov values** suggest limited chaotic behavior.")
 
-        fig4, ax4 = plt.subplots()
-        ax4.plot(starts, rqa_dets, marker='x', label='Determinism', color='darkorange')
-        ax4.set_xlabel("Start Index")
-        ax4.set_ylabel("RQA DET")
-        ax4.set_title("Determinism vs. Segment Start Index")
-        ax4.grid(True)
-        ax4.legend()
-        st.pyplot(fig4)
+        if peak_pe > 0.85:
+            st.write("🔺 **High Permutation Entropy** indicates high unpredictability and information richness.")
+        else:
+            st.write("🟢 **Low-to-moderate PE** may reflect more regular, potentially structured behavior.")
 
-        fig5, ax5 = plt.subplots()
-        ax5.plot(starts, rqa_ents, marker='d', label='RQA Entropy', color='purple')
-        ax5.set_xlabel("Start Index")
-        ax5.set_ylabel("RQA ENTR")
-        ax5.set_title("RQA Entropy vs. Segment Start Index")
-        ax5.grid(True)
-        ax5.legend()
-        st.pyplot(fig5)
+        st.info("Segments overlapping with IDR regions often exhibit higher PE and Lyapunov values, supporting the hypothesis of dynamic disorder.")
