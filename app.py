@@ -9,7 +9,6 @@ import pandas as pd
 
 st.set_page_config(page_title="PDB Chaos Analyzer", layout="centered")
 st.title("🔬 PDB File Chaos Analyzer (Multi-Metric)")
-st.markdown("Upload a `.pdb` file to compute Lyapunov, RQA, and Permutation Entropy on Cα distances.")
 
 # Permutation Entropy function
 def permutation_entropy(time_series, order=3, delay=1):
@@ -91,6 +90,10 @@ if uploaded_file is not None:
         min_pe, max_pe = st.sidebar.slider("Permutation Entropy Range", 0.0, 1.0, (0.0, 1.0))
         show_idr_only = st.sidebar.checkbox("Show Only IDR Overlap Segments", value=False)
 
+        st.sidebar.markdown("### 🧠 Interpretation Thresholds")
+        user_lyap_thresh = st.sidebar.slider("Lyapunov threshold for chaos", -2.0, 2.0, 1.0)
+        user_pe_thresh = st.sidebar.slider("PE threshold for unpredictability", 0.0, 1.0, 0.85)
+
         step = 10
         window = 10
         results = []
@@ -106,7 +109,7 @@ if uploaded_file is not None:
             pe = permutation_entropy(ts)
             overlap = "Yes" if (idr_start <= i + window and idr_end >= i) else "No"
             results.append({"Start": i, "End": i + window, "Lyapunov": round(lyap, 4), "RQA_RR": round(rr, 4), "RQA_DET": round(det, 4), "RQA_ENTR": round(entr, 4), "PE": round(pe, 4), "IDR_overlap": overlap})
-            segments.append({"index": f"{i}-{i + window}", "ts": ts, "rqa_mat": mat})
+            segments.append({"index": f"{i}-{i + window}", "ts": ts, "rqa_mat": mat, "lyap": lyap, "pe": pe})
 
         df = pd.DataFrame(results)
         filtered_df = df[(df['Lyapunov'] >= min_lyap) & (df['Lyapunov'] <= max_lyap) & (df['PE'] >= min_pe) & (df['PE'] <= max_pe)]
@@ -120,37 +123,44 @@ if uploaded_file is not None:
         filtered_df.to_csv(csv_output, index=False)
         st.download_button("⬇️ Download Filtered CSV", data=csv_output.getvalue(), file_name="filtered_chaos_analysis.csv")
 
-        # Interactive segment selection
-        st.markdown("### 🔍 Select a Segment to Explore")
-        selected_index = st.selectbox("Choose a segment (start-end):", [seg["index"] for seg in segments])
-        selected_seg = next(seg for seg in segments if seg["index"] == selected_index)
+        st.markdown("### 🧬 Compare Multiple Segments")
+        selected_indices = st.multiselect("Select segments (start-end):", [seg["index"] for seg in segments])
+        selected_segs = [seg for seg in segments if seg["index"] in selected_indices]
 
-        # Plot time series of selected segment
-        fig_ts, ax_ts = plt.subplots()
-        ax_ts.plot(selected_seg["ts"], marker='o', linestyle='-', color='teal')
-        ax_ts.set_title(f"Time Series for Segment {selected_index}")
-        ax_ts.set_xlabel("Frame Index")
-        ax_ts.set_ylabel("Distance (Å)")
-        st.pyplot(fig_ts)
+        if selected_segs:
+            fig_cmp, ax_cmp = plt.subplots()
+            for seg in selected_segs:
+                ax_cmp.plot(seg["ts"], label=seg["index"])
+            ax_cmp.set_title("Time Series Comparison")
+            ax_cmp.set_xlabel("Frame Index")
+            ax_cmp.set_ylabel("Distance (Å)")
+            ax_cmp.legend()
+            st.pyplot(fig_cmp)
 
-        # Plot RQA matrix
-        fig_rqa, ax_rqa = plt.subplots()
-        ax_rqa.imshow(selected_seg["rqa_mat"], cmap='Greys', origin='lower')
-        ax_rqa.set_title(f"RQA Matrix for Segment {selected_index}")
-        st.pyplot(fig_rqa)
+            st.markdown("#### 🧱 Recurrence Matrices")
+            cols = st.columns(len(selected_segs))
+            for col, seg in zip(cols, selected_segs):
+                with col:
+                    st.markdown(f"**Segment {seg['index']}**")
+                    fig_mat, ax_mat = plt.subplots()
+                    ax_mat.imshow(seg["rqa_mat"], cmap='Greys', origin='lower')
+                    ax_mat.axis('off')
+                    st.pyplot(fig_mat)
 
-        # Auto interpretation block
+            st.markdown("#### 📑 Metric Comparison")
+            metrics = pd.DataFrame([{"Segment": seg["index"], "Lyapunov": seg["lyap"], "PE": seg["pe"]} for seg in selected_segs])
+            st.dataframe(metrics)
+
         st.markdown("### 📖 Interpretation")
-        peak_lyap = df['Lyapunov'].max()
-        peak_pe = df['PE'].max()
-        if peak_lyap > 1.5:
-            st.write("🔺 **High Lyapunov values** suggest segments with strong chaotic dynamics.")
+        if df['Lyapunov'].max() > user_lyap_thresh:
+            st.write(f"🔺 Lyapunov values above **{user_lyap_thresh}** indicate strong chaotic behavior in some regions.")
         else:
-            st.write("🟢 **Moderate Lyapunov values** suggest limited chaotic behavior.")
+            st.write(f"🟢 All Lyapunov values are below **{user_lyap_thresh}**, suggesting limited chaoticity.")
 
-        if peak_pe > 0.85:
-            st.write("🔺 **High Permutation Entropy** indicates high unpredictability and information richness.")
+        if df['PE'].max() > user_pe_thresh:
+            st.write(f"🔺 PE values above **{user_pe_thresh}** suggest high unpredictability in structural dynamics.")
         else:
-            st.write("🟢 **Low-to-moderate PE** may reflect more regular, potentially structured behavior.")
+            st.write(f"🟢 PE values are mostly below **{user_pe_thresh}**, indicating more regular patterns.")
 
-        st.info("Segments overlapping with IDR regions often exhibit higher PE and Lyapunov values, supporting the hypothesis of dynamic disorder.")
+        if show_idr_only:
+            st.info("Displayed segments are limited to those overlapping with the user-defined IDR region.")
