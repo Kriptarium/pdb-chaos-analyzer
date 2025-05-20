@@ -156,6 +156,29 @@ if uploaded_file is not None:
         top5_df = df.sort_values(by="Lyapunov", ascending=False).head(5)
         st.dataframe(top5_df)
 
+
+        
+        st.sidebar.markdown("### ⚙️ Segment Parameters")
+        user_window = st.sidebar.selectbox("Segment Window Size", options=[10, 20, 30, 50, 100], index=0)
+        user_step = st.sidebar.selectbox("Segment Step Size", options=[5, 10, 15, 20], index=1)
+
+        results = []
+        segments = []
+
+        for i in range(0, n_atoms - user_window, user_step):
+            ts = [np.linalg.norm(ca_coords[i] - ca_coords[j]) for j in range(i + 1, i + user_window + 1)]
+            ts = np.array(ts)
+            diff_series = np.abs(np.diff(ts))
+            diff_series = diff_series[diff_series > 0]
+            lyap = np.mean(np.log(diff_series)) if len(diff_series) > 0 else 0
+            rr, det, entr, mat = compute_rqa(ts, return_matrix=True)
+            pe = permutation_entropy(ts)
+            overlap = "Yes" if (idr_start <= i + user_window and idr_end >= i) else "No"
+            results.append({"Start": i, "End": i + user_window, "Lyapunov": round(lyap, 4), "RQA_RR": round(rr, 4), "RQA_DET": round(det, 4), "RQA_ENTR": round(entr, 4), "PE": round(pe, 4), "IDR_overlap": overlap})
+            segments.append({"index": f"{i}-{i + user_window}", "ts": ts, "rqa_mat": mat, "lyap": lyap, "pe": pe})
+
+
+        
         st.markdown("#### 🔍 Time Series of Top Chaotic Segments")
         fig_top5, ax_top5 = plt.subplots()
         for idx, row in top5_df.iterrows():
