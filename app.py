@@ -84,6 +84,11 @@ if uploaded_file is not None:
     else:
         st.markdown(f"### ✅ Extracted {n_atoms} Cα atoms. Running analysis...")
 
+        # IDR region input from user
+        st.sidebar.markdown("### 🔍 IDR Region Settings")
+        idr_start = st.sidebar.number_input("IDR Start Index", min_value=0, max_value=n_atoms-2, value=0)
+        idr_end = st.sidebar.number_input("IDR End Index", min_value=idr_start+1, max_value=n_atoms-1, value=min(60, n_atoms-1))
+
         step = 10
         window = 10
         results = []
@@ -97,6 +102,7 @@ if uploaded_file is not None:
             lyap = np.mean(np.log(diff_series)) if len(diff_series) > 0 else 0
             rr, det, entr = compute_rqa(ts)
             pe = permutation_entropy(ts)
+            overlap = "Yes" if (idr_start <= i + window and idr_end >= i) else "No"
             results.append({
                 "Start": i,
                 "End": i + window,
@@ -105,7 +111,7 @@ if uploaded_file is not None:
                 "RQA_DET": round(det, 4),
                 "RQA_ENTR": round(entr, 4),
                 "PE": round(pe, 4),
-                "IDR_overlap": "Yes" if i <= 60 <= (i + window) else "No"
+                "IDR_overlap": overlap
             })
             starts.append(i)
             lyaps.append(lyap)
