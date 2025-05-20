@@ -27,25 +27,36 @@ if uploaded_file is not None:
                     ca_coords.append(residue["CA"].get_coord())
 
     ca_coords = np.array(ca_coords)
-    if len(ca_coords) < 20:
+    n_atoms = len(ca_coords)
+    
+    if n_atoms < 5:
         st.warning("The structure has too few Cα atoms for a meaningful analysis.")
     else:
-        # Time series: distance between fixed atom 0 and others
-        time_series = [np.linalg.norm(ca_coords[0] - ca_coords[i]) for i in range(1, len(ca_coords))]
+        st.markdown(f"### ✅ Loaded {n_atoms} Cα atoms.")
+
+        # Atom pair selection
+        col1, col2 = st.columns(2)
+        with col1:
+            start_index = st.number_input("Select first atom index (0-based)", min_value=0, max_value=n_atoms-2, value=0)
+        with col2:
+            end_index = st.number_input("Select second atom index (0-based)", min_value=start_index+1, max_value=n_atoms-1, value=start_index+10)
+
+        # Generate time series based on selected atom pair
+        time_series = [np.linalg.norm(ca_coords[start_index] - ca_coords[i]) for i in range(start_index + 1, end_index + 1)]
         ts = np.array(time_series)
 
-        # Simple Lyapunov estimate using finite differences (proxy for demonstration)
+        # Simple Lyapunov estimate using finite differences
         diff_series = np.abs(np.diff(ts))
         diff_series = diff_series[diff_series > 0]  # Avoid log(0)
         lyapunov_est = np.mean(np.log(diff_series))
 
-        st.markdown(f"### 🧮 Estimated Lyapunov Exponent: `{lyapunov_est:.4f}`")
+        st.markdown(f"### 🧮 Estimated Lyapunov Exponent (Atoms {start_index}–{end_index}): `{lyapunov_est:.4f}`")
 
         # Plot the time series
         fig, ax = plt.subplots(figsize=(8, 4))
         ax.plot(ts, marker='o', linestyle='-', color='teal')
-        ax.set_title("Distance Time Series (Cα Atom 0 vs. Others)")
-        ax.set_xlabel("Residue Index")
+        ax.set_title(f"Distance Time Series (Atom {start_index} vs. {start_index+1} to {end_index})")
+        ax.set_xlabel("Relative Residue Index")
         ax.set_ylabel("Distance (Å)")
         ax.grid(True)
         st.pyplot(fig)
