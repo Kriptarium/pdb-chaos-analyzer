@@ -151,6 +151,23 @@ if uploaded_file is not None:
             metrics = pd.DataFrame([{"Segment": seg["index"], "Lyapunov": seg["lyap"], "PE": seg["pe"]} for seg in selected_segs])
             st.dataframe(metrics)
 
+          # Display top 5 chaotic segments
+        st.markdown("### 🔥 Top 5 Most Chaotic Segments")
+        top5_df = df.sort_values(by="Lyapunov", ascending=False).head(5)
+        st.dataframe(top5_df)
+
+        st.markdown("#### 🔍 Time Series of Top Chaotic Segments")
+        fig_top5, ax_top5 = plt.subplots()
+        for idx, row in top5_df.iterrows():
+            start = int(row['Start'])
+            ts_top = [np.linalg.norm(ca_coords[start] - ca_coords[j]) for j in range(start + 1, start + window + 1)]
+            ax_top5.plot(ts_top, label=f"{start}-{start + window}")
+        ax_top5.set_title("Top 5 Chaotic Segments - Time Series")
+        ax_top5.set_xlabel("Frame Index")
+        ax_top5.set_ylabel("Distance (Å)")
+        ax_top5.legend()
+        st.pyplot(fig_top5)
+
         st.markdown("### 📖 Interpretation")
         if df['Lyapunov'].max() > user_lyap_thresh:
             st.write(f"🔺 Lyapunov values above **{user_lyap_thresh}** indicate strong chaotic behavior in some regions.")
