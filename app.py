@@ -11,8 +11,12 @@ st.markdown("Upload a `.pdb` file to compute a simple Lyapunov exponent based on
 uploaded_file = st.file_uploader("Choose a PDB file", type=["pdb"])
 
 if uploaded_file is not None:
+    # Convert uploaded binary file to text stream
+    text = uploaded_file.read().decode("utf-8")
+    text_stream = io.StringIO(text)
+
     parser = PDBParser(QUIET=True)
-    structure = parser.get_structure("PDB", uploaded_file)
+    structure = parser.get_structure("PDB", text_stream)
 
     # Extract C-alpha atoms
     ca_coords = []
