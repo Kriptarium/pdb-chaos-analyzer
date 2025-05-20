@@ -92,7 +92,7 @@ if uploaded_file is not None:
         step = 10
         window = 10
         results = []
-        starts, lyaps, pes = [], [], []
+        starts, lyaps, pes, rqa_rrs, rqa_dets, rqa_ents = [], [], [], [], [], []
 
         for i in range(0, n_atoms - window, step):
             ts = [np.linalg.norm(ca_coords[i] - ca_coords[j]) for j in range(i + 1, i + window + 1)]
@@ -116,6 +116,9 @@ if uploaded_file is not None:
             starts.append(i)
             lyaps.append(lyap)
             pes.append(pe)
+            rqa_rrs.append(rr)
+            rqa_dets.append(det)
+            rqa_ents.append(entr)
 
         st.markdown("### 📊 Analysis Summary Table")
         df = pd.DataFrame(results)
@@ -128,6 +131,7 @@ if uploaded_file is not None:
 
         # Plot Lyapunov and PE as a function of start index
         st.markdown("### 📈 Segment-wise Metric Visualization")
+
         fig1, ax1 = plt.subplots()
         ax1.plot(starts, lyaps, marker='o', label='Lyapunov', color='crimson')
         ax1.set_xlabel("Start Index")
@@ -151,3 +155,33 @@ if uploaded_file is not None:
         fig2.savefig(svg2, format='svg')
         st.pyplot(fig2)
         st.download_button("⬇️ Download PE Plot (SVG)", data=svg2.getvalue(), file_name="pe_plot.svg")
+
+        # RQA metric visualizations
+        st.markdown("### 📉 RQA Metrics Visualization")
+
+        fig3, ax3 = plt.subplots()
+        ax3.plot(starts, rqa_rrs, marker='^', label='Recurrence Rate', color='darkgreen')
+        ax3.set_xlabel("Start Index")
+        ax3.set_ylabel("RQA RR")
+        ax3.set_title("Recurrence Rate vs. Segment Start Index")
+        ax3.grid(True)
+        ax3.legend()
+        st.pyplot(fig3)
+
+        fig4, ax4 = plt.subplots()
+        ax4.plot(starts, rqa_dets, marker='x', label='Determinism', color='darkorange')
+        ax4.set_xlabel("Start Index")
+        ax4.set_ylabel("RQA DET")
+        ax4.set_title("Determinism vs. Segment Start Index")
+        ax4.grid(True)
+        ax4.legend()
+        st.pyplot(fig4)
+
+        fig5, ax5 = plt.subplots()
+        ax5.plot(starts, rqa_ents, marker='d', label='RQA Entropy', color='purple')
+        ax5.set_xlabel("Start Index")
+        ax5.set_ylabel("RQA ENTR")
+        ax5.set_title("RQA Entropy vs. Segment Start Index")
+        ax5.grid(True)
+        ax5.legend()
+        st.pyplot(fig5)
