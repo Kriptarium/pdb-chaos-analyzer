@@ -84,10 +84,13 @@ if uploaded_file is not None:
     else:
         st.markdown(f"### ✅ Extracted {n_atoms} Cα atoms. Running analysis...")
 
-        # IDR region input from user
-        st.sidebar.markdown("### 🔍 IDR Region Settings")
+        # Sidebar settings for IDR and filters
+        st.sidebar.markdown("### 🔍 IDR & Filter Settings")
         idr_start = st.sidebar.number_input("IDR Start Index", min_value=0, max_value=n_atoms-2, value=0)
         idr_end = st.sidebar.number_input("IDR End Index", min_value=idr_start+1, max_value=n_atoms-1, value=min(60, n_atoms-1))
+        min_lyap, max_lyap = st.sidebar.slider("Lyapunov Range", -5.0, 5.0, (-1.0, 1.0))
+        min_pe, max_pe = st.sidebar.slider("Permutation Entropy Range", 0.0, 1.0, (0.0, 1.0))
+        show_idr_only = st.sidebar.checkbox("Show Only IDR Overlap Segments", value=False)
 
         step = 10
         window = 10
@@ -120,17 +123,25 @@ if uploaded_file is not None:
             rqa_dets.append(det)
             rqa_ents.append(entr)
 
-        st.markdown("### 📊 Analysis Summary Table")
         df = pd.DataFrame(results)
-        st.dataframe(df)
+        filtered_df = df[
+            (df['Lyapunov'] >= min_lyap) &
+            (df['Lyapunov'] <= max_lyap) &
+            (df['PE'] >= min_pe) &
+            (df['PE'] <= max_pe)
+        ]
+        if show_idr_only:
+            filtered_df = filtered_df[filtered_df['IDR_overlap'] == "Yes"]
 
-        # Download CSV
+        st.markdown("### 📊 Filtered Analysis Table")
+        st.dataframe(filtered_df)
+
         csv_output = io.StringIO()
-        df.to_csv(csv_output, index=False)
-        st.download_button("⬇️ Download CSV Results", data=csv_output.getvalue(), file_name="chaos_analysis_summary.csv")
+        filtered_df.to_csv(csv_output, index=False)
+        st.download_button("⬇️ Download Filtered CSV", data=csv_output.getvalue(), file_name="filtered_chaos_analysis.csv")
 
-        # Plot Lyapunov and PE as a function of start index
-        st.markdown("### 📈 Segment-wise Metric Visualization")
+        # Visualizations remain unchanged and reflect all segments
+        st.markdown("### 📈 Metric Visualizations (Full Dataset)")
 
         fig1, ax1 = plt.subplots()
         ax1.plot(starts, lyaps, marker='o', label='Lyapunov', color='crimson')
@@ -139,10 +150,7 @@ if uploaded_file is not None:
         ax1.set_title("Lyapunov vs. Segment Start Index")
         ax1.grid(True)
         ax1.legend()
-        svg1 = io.StringIO()
-        fig1.savefig(svg1, format='svg')
         st.pyplot(fig1)
-        st.download_button("⬇️ Download Lyapunov Plot (SVG)", data=svg1.getvalue(), file_name="lyapunov_plot.svg")
 
         fig2, ax2 = plt.subplots()
         ax2.plot(starts, pes, marker='s', label='Permutation Entropy', color='navy')
@@ -151,13 +159,7 @@ if uploaded_file is not None:
         ax2.set_title("Permutation Entropy vs. Segment Start Index")
         ax2.grid(True)
         ax2.legend()
-        svg2 = io.StringIO()
-        fig2.savefig(svg2, format='svg')
         st.pyplot(fig2)
-        st.download_button("⬇️ Download PE Plot (SVG)", data=svg2.getvalue(), file_name="pe_plot.svg")
-
-        # RQA metric visualizations
-        st.markdown("### 📉 RQA Metrics Visualization")
 
         fig3, ax3 = plt.subplots()
         ax3.plot(starts, rqa_rrs, marker='^', label='Recurrence Rate', color='darkgreen')
